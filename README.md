@@ -47,9 +47,7 @@ by `#ifdef __EBCANDROID__`. Key patches:
 ## Building
 
 This directory is consumed by the Android NDK build system. It is not intended
-to build standalone. To build the full app, see the private repository
-[ebc81/rtlsdr433_android](https://github.com/ebc81/rtlsdr433_android).
-
+to build standalone.
 To build just the native library for inspection purposes, you need:
 - Android NDK ≥ 29.0.14206865
 - CMake ≥ 4.1.2
