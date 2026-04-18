@@ -1,0 +1,18 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.d
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+build/
+
+# Android NDK / Gradle temporaries
+.externalNativeBuild/
+.cxx/
+
+# OS
+.DS_Store
+Thumbs.db
