@@ -60,6 +60,7 @@ To build just the native library for inspection purposes, you need:
 
 | Tag | App Version | Date |
 |---|---|---|
+| `v1.0.10` | 1.0.10 | 2026-04-18 |
 | `v1.0.9` | 1.0.9 | 2026-04-18 |
 
 ---
