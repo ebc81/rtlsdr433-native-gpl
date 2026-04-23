@@ -132,10 +132,12 @@ struct rtlsdr_dev {
 	char manufact[256];
 	char product[256];
 	int force_bt;
+	enum rtlsdr_ds_mode direct_sampling_mode;
 };
 
 void rtlsdr_set_gpio_bit(rtlsdr_dev_t *dev, uint8_t gpio, int val);
 static int rtlsdr_set_if_freq(rtlsdr_dev_t *dev, uint32_t freq);
+int _rtlsdr_set_direct_sampling(rtlsdr_dev_t *dev, int on);
 
 /* generic tuner interface functions, shall be moved to the tuner implementations */
 int e4000_init(void *dev) {
@@ -896,9 +898,24 @@ int rtlsdr_read_eeprom(rtlsdr_dev_t *dev, uint8_t *data, uint8_t offset, uint16_
 int rtlsdr_set_center_freq(rtlsdr_dev_t *dev, uint32_t freq)
 {
 	int r = -1;
+	int last_ds;
 
 	if (!dev || !dev->tuner)
 		return -1;
+
+	/* Get the last direct sampling status */
+	last_ds = rtlsdr_get_direct_sampling(dev);
+	if (last_ds < 0)
+		return 1;
+
+	/* Auto-switch direct sampling for R820T below 24 MHz.
+	 * Only when ds_mode == 0 (user has not forced a mode).
+	 * V4L has its own upconverter for HF and must NOT use direct sampling. */
+	if (dev->direct_sampling_mode == 0) {
+		dev->direct_sampling = (freq < 24000000 &&
+			dev->tuner_type == RTLSDR_TUNER_R820T &&
+			!rtlsdr_check_dongle_model(dev, "RTLSDRBlog", "Blog V4L")) ? 2 : 0;
+	}
 
 	if (dev->direct_sampling) {
 		r = rtlsdr_set_if_freq(dev, freq);
@@ -912,6 +929,10 @@ int rtlsdr_set_center_freq(rtlsdr_dev_t *dev, uint32_t freq)
 		dev->freq = freq;
 	else
 		dev->freq = 0;
+
+	/* Re-apply direct sampling hardware config if the mode changed */
+	if (last_ds != dev->direct_sampling)
+		return _rtlsdr_set_direct_sampling(dev, dev->direct_sampling);
 
 	return r;
 }
@@ -1175,6 +1196,15 @@ int rtlsdr_set_agc_mode(rtlsdr_dev_t *dev, int on)
 }
 
 int rtlsdr_set_direct_sampling(rtlsdr_dev_t *dev, int on)
+{
+	/* Remember the mode so rtlsdr_set_center_freq() knows not to auto-switch */
+	if (!dev)
+		return -1;
+	dev->direct_sampling_mode = (enum rtlsdr_ds_mode)on;
+	return _rtlsdr_set_direct_sampling(dev, on);
+}
+
+int _rtlsdr_set_direct_sampling(rtlsdr_dev_t *dev, int on)
 {
 	int r = 0;
 
@@ -1585,6 +1615,9 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 
 		if (rtlsdr_check_dongle_model(dev, "RTLSDRBlog", "Blog V4"))
 			fprintf(stderr, "RTL-SDR Blog V4 Detected\n");
+
+		if (rtlsdr_check_dongle_model(dev, "RTLSDRBlog", "Blog V4L"))
+			fprintf(stderr, "RTL-SDR Blog V4 Lite Detected\n");
 
 		dev->tuner_type = RTLSDR_TUNER_R828D;
 		goto found;

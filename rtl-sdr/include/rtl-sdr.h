@@ -29,6 +29,18 @@ extern "C" {
 
 typedef struct rtlsdr_dev rtlsdr_dev_t;
 
+/*!
+ * RTL-SDR Blog direct sampling mode.
+ * RTLSDR_DS_IQ    = 0: normal IQ mode (no direct sampling)
+ * RTLSDR_DS_I     = 1: direct sampling on I-ADC input
+ * RTLSDR_DS_Q     = 2: direct sampling on Q-ADC input
+ */
+enum rtlsdr_ds_mode {
+	RTLSDR_DS_IQ  = 0,
+	RTLSDR_DS_I   = 1,
+	RTLSDR_DS_Q   = 2
+};
+
 RTLSDR_API uint32_t rtlsdr_get_device_count(void);
 
 RTLSDR_API const char* rtlsdr_get_device_name(uint32_t index);
@@ -398,6 +410,16 @@ RTLSDR_API int rtlsdr_set_bias_tee(rtlsdr_dev_t *dev, int on);
  * \return -1 if device is not initialized. 0 otherwise.
  */
 RTLSDR_API int rtlsdr_set_bias_tee_gpio(rtlsdr_dev_t *dev, int gpio, int on);
+
+/*!
+ * Check if the device matches the given manufacturer and product EEPROM strings.
+ *
+ * \param dev the device handle given by rtlsdr_open()
+ * \param manufact_check manufacturer string to match
+ * \param product_check product string to match
+ * \return 1 if strings match, 0 otherwise
+ */
+RTLSDR_API int rtlsdr_check_dongle_model(void *dev, char *manufact_check, char *product_check);
 
 
 #ifdef __cplusplus
