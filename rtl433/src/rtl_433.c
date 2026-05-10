@@ -2153,6 +2153,7 @@ int android_sample_rate   = DEFAULT_SAMPLE_RATE;
 int android_ppm           = 0;
 int android_conversion    = CONVERT_SI;  // CONVERT_NATIVE / CONVERT_SI / CONVERT_CUSTOMARY
 int android_agc_mode      = 0;          // 0 = off, 1 = enable RTL2832U digital AGC
+int android_biast         = 0;          // 0 = off, 1 = on (if supported by device)
 
 // Implemented in android_bridge.c — registers a custom JSON output that calls back to JNI
 void android_bridge_add_output(r_cfg_t *cfg);
@@ -2263,9 +2264,9 @@ void rtl433_start(void)
     }
 
     __android_log_print(ANDROID_LOG_INFO, "RTL433",
-            "rtl433_start: BEGIN fd=%d freq=%d sr=%d ppm=%d gain='%s' conv=%d digitalAgc=%d",
+            "rtl433_start: BEGIN fd=%d freq=%d sr=%d ppm=%d gain='%s' conv=%d digitalAgc=%d biast=%d",
             android_usb_fd, android_frequency_hz, android_sample_rate,
-            android_ppm, android_gain_str, android_conversion, android_agc_mode);
+            android_ppm, android_gain_str, android_conversion, android_agc_mode, android_biast);
 
     _is_running = 1;
     g_cfg.exit_async = 0;
@@ -2293,10 +2294,15 @@ void rtl433_start(void)
         __android_log_write(ANDROID_LOG_INFO, "RTL433", "rtl433_start: digital AGC enabled (settings_str=digital_agc=1)");
     }
 
+    if (android_biast) {
+        cfg->settings_str = strdup("biastee=1");
+        __android_log_write(ANDROID_LOG_INFO, "RTL433", "rtl433_start: biast enabled (settings_str=biastee=1)");
+    }
+
     __android_log_print(ANDROID_LOG_INFO, "RTL433",
-            "rtl433_start: gain_str='%s' agc_mode=%d tuner_gain=%s",
+            "rtl433_start: gain_str='%s' agc_mode=%d biast=%d tuner_gain=%s",
             cfg->gain_str ? cfg->gain_str : "(auto)",
-            android_agc_mode,
+            android_agc_mode,android_biast,
             (cfg->gain_str && cfg->gain_str[0]) ? "manual" : "auto");
 
     // Enable RSSI/SNR/freq/mod fields in decoded JSON output.

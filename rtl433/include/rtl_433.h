@@ -151,6 +151,7 @@ extern int  android_sample_rate;
 extern int  android_ppm;
 extern int  android_conversion;
 extern int  android_agc_mode;      // 0 = off, 1 = enable RTL2832U digital AGC
+extern int  android_biast;        // 0 = off, 1 = enable bias tee
 
 // Lifecycle
 void rtl433_start(void);

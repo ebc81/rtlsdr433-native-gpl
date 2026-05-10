@@ -251,7 +251,8 @@ Java_eu_ebctech_rtlsdr433andro_rtlsdr_NativeBridge_start(
         jint sampleRate,
         jint ppm,
         jint conversion,
-        jint digitalAgc)
+        jint digitalAgc,
+        jint biast)
 {
     __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
             "JNI start() called: fd=%d freqHz=%d sampleRate=%d ppm=%d conv=%d digitalAgc=%d",
@@ -283,6 +284,7 @@ Java_eu_ebctech_rtlsdr433andro_rtlsdr_NativeBridge_start(
     android_ppm          = static_cast<int>(ppm);
     android_conversion   = static_cast<int>(conversion);
     android_agc_mode     = static_cast<int>(digitalAgc);
+    android_biast        = static_cast<int>(biast);
 
     __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
             "JNI start() → rtl433_start() [blocking]: fd=%d gain='%s' freq=%d sr=%d ppm=%d conv=%d digitalAgc=%d",
