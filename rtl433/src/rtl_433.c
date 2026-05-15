@@ -2144,6 +2144,7 @@ int main(int argc, char **argv) {
 #ifdef __EBCANDROID__
 
 #include <android/log.h>
+#include <pthread.h>
 
 // Config vars set by JNI before calling rtl433_start()
 int android_usb_fd        = -1;
@@ -2160,6 +2161,7 @@ void android_bridge_add_output(r_cfg_t *cfg);
 
 // Internal run state
 static volatile int _is_running = 0;
+static pthread_mutex_t g_run_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Full rtl_433 run loop (SDR open + watchdog event loop).
 // Called from rtl433_start() — blocking, runs on the JNI thread.
@@ -2258,17 +2260,20 @@ static int android_run_sdr_loop(r_cfg_t *cfg)
 // All SDR lifecycle: config init → decoder registration → event loop → cleanup.
 void rtl433_start(void)
 {
+    pthread_mutex_lock(&g_run_mutex);
     if (_is_running) {
+        pthread_mutex_unlock(&g_run_mutex);
         __android_log_write(ANDROID_LOG_WARN, "RTL433", "rtl433_start: already running, ignoring call");
         return;
     }
+    _is_running = 1;
+    pthread_mutex_unlock(&g_run_mutex);
 
     __android_log_print(ANDROID_LOG_INFO, "RTL433",
             "rtl433_start: BEGIN fd=%d freq=%d sr=%d ppm=%d gain='%s' conv=%d digitalAgc=%d biast=%d",
             android_usb_fd, android_frequency_hz, android_sample_rate,
             android_ppm, android_gain_str, android_conversion, android_agc_mode, android_biast);
 
-    _is_running = 1;
     g_cfg.exit_async = 0;
 
     r_cfg_t *cfg = &g_cfg;
@@ -2353,21 +2358,32 @@ void rtl433_start(void)
 
     __android_log_print(ANDROID_LOG_INFO, "RTL433", "rtl433_start: android_run_sdr_loop returned %d, cleaning up", ret);
     r_free_cfg(cfg);
+    pthread_mutex_lock(&g_run_mutex);
     _is_running = 0;
+    pthread_mutex_unlock(&g_run_mutex);
     __android_log_write(ANDROID_LOG_INFO, "RTL433", "rtl433_start: END");
 }
 
 void rtl433_android_close(void)
 {
+    pthread_mutex_lock(&g_run_mutex);
+    int running = _is_running;
+    if (running) {
+        // Signal the event loop to exit; rtl433_start() will return on its own thread.
+        g_cfg.exit_async = 1;
+    }
+    pthread_mutex_unlock(&g_run_mutex);
+
     __android_log_print(ANDROID_LOG_INFO, "RTL433",
-            "rtl433_android_close: called (is_running=%d)", _is_running);
-    // Signal the event loop to exit; rtl433_start() will return on its own thread
-    g_cfg.exit_async = 1;
+            "rtl433_android_close: called (is_running=%d)", running);
 }
 
 int rtl433_android_isrunning(void)
 {
-    return _is_running;
+    pthread_mutex_lock(&g_run_mutex);
+    int running = _is_running;
+    pthread_mutex_unlock(&g_run_mutex);
+    return running;
 }
 
 
