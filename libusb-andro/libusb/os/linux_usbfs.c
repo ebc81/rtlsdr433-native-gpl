@@ -2414,9 +2414,24 @@ static int handle_bulk_completion(struct usbi_transfer *itransfer,
 {
 	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
 	struct libusb_transfer *transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
-	int urb_idx = (int)( urb - tpriv->urbs);
+	int urb_idx;
 
 	usbi_mutex_lock(&itransfer->lock);
+
+	/* Guard against orphaned kernel URBs: on Android 16+ (kernel 6.12),
+	 * USBFS_CAP_REAP_AFTER_DISCONNECT can cause a callback to resubmit a
+	 * transfer during disconnect.  If usbi_handle_disconnect has already
+	 * called clear_transfer_priv (freeing tpriv->urbs) for this transfer,
+	 * this is a stale kernel URB with no matching usbi_transfer state.
+	 * Processing it would trigger an extra usbi_handle_transfer_completion
+	 * call, causing a libusb_unref_device refcount underflow that frees the
+	 * libusb_device while other completions still hold pointers to it. */
+	if (!tpriv->urbs) {
+		usbi_mutex_unlock(&itransfer->lock);
+		return 0;
+	}
+
+	urb_idx = (int)(urb - tpriv->urbs);
 	usbi_dbg("handling completion status %d of bulk urb %d/%d", urb->status,
 		urb_idx + 1, tpriv->num_urbs);
 

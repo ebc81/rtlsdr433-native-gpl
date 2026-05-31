@@ -1774,7 +1774,16 @@ static void LIBUSB_CALL _libusb_callback(struct libusb_transfer *xfer)
 		if (dev->cb)
 			dev->cb(xfer->buffer, xfer->actual_length, dev->cb_ctx);
 
-		libusb_submit_transfer(xfer); /* resubmit transfer */
+		/* Check resubmit result: on Android 16+ (kernel 6.12), the
+		 * USBFS_CAP_REAP_AFTER_DISCONNECT path delivers COMPLETED-status
+		 * URBs during USB unplug.  Ignoring the return value here led to
+		 * extra libusb_unref_device calls (refcount underflow) and a crash
+		 * inside usbi_handle_transfer_completion when MTE detected the
+		 * use-after-free of the freed libusb_device struct. */
+		if (libusb_submit_transfer(xfer) != LIBUSB_SUCCESS) {
+			dev->dev_lost = 1;
+			rtlsdr_cancel_async(dev);
+		}
 		dev->xfer_errors = 0;
 	} else if (LIBUSB_TRANSFER_CANCELLED != xfer->status) {
 #ifndef _WIN32
