@@ -32,7 +32,6 @@ extern "C" {
 RTLSDR_API int rtlsdr_open2(rtlsdr_dev_t **out_dev, int fd);
 RTLSDR_API int rtlsdr_cancel_async_save(rtlsdr_dev_t *dev);
 RTLSDR_API int rtlsdr_cancel_async_save_fast(rtlsdr_dev_t *dev);
-RTLSDR_API int rtlsdr_supporting_ppm_search();
 
 #ifdef __cplusplus
 }
