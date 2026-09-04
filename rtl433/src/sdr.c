@@ -32,10 +32,15 @@ int __attribute__((weak)) rtlsdr_set_bias_tee(rtlsdr_dev_t *dev, int on);
 #ifdef LIBUSB1
 #include <libusb.h> /* libusb_error_name(), libusb_strerror() */
 #endif
-// EBC: Android USB host - open RTL-SDR via file descriptor
+// EBC: Android USB host - open RTL-SDR via file descriptor.
+//
+// __EBCANDROID__: the rtlsdr_open2() prototype used to be written out by hand here. It now
+// comes from ebc-sdr-native, which owns the function -- a hand-written copy would drift from
+// the library's signature without the compiler noticing. librtlsdr_andro.h pulls in nothing
+// but rtl-sdr.h, so this file's own fprintf() calls are not redirected.
 #ifdef __EBCANDROID__
+#include "librtlsdr_andro.h"
 extern int android_usb_fd;
-int rtlsdr_open2(rtlsdr_dev_t **out_dev, int fd);
 #endif
 #endif
 #ifdef SOAPYSDR
@@ -377,6 +382,11 @@ static int sdr_open_rtl(sdr_dev_t **out_dev, char const *dev_query, int verbose)
 #endif
         if (verbose)
             print_logf(LOG_NOTICE, "SDR", "Opening RTL-SDR via Android USB fd=%d", android_usb_fd);
+        // err is an EBC_SDR_ERR_* code from ebc-sdr-native (-2001 = libusb_init, -2002 =
+        // claim failed) or a raw LIBUSB_ERROR_*. Nothing here maps it onto the app's own
+        // -101/-102: the value only travels as far as rtl433_start(), which logs it and
+        // returns void, so no mapping would change what the Kotlin layer sees. See
+        // RTL433_Exception.EXIT_TEST_RTLSDR_OPEN1/2, which have never been reachable.
         int r = rtlsdr_open2(&dev->rtlsdr_dev, android_usb_fd);
         if (r < 0) {
             print_logf(LOG_ERROR, "SDR", "rtlsdr_open2 failed (fd=%d, err=%d)", android_usb_fd, r);

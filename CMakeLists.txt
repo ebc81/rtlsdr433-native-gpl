@@ -7,54 +7,47 @@ project("rtlsdr433")
 # =============================================================================
 # This builds a single shared library 'librtlsdr433' composed of:
 #
-#   libusb-andro/  - libusb adapted for Android (no udev, uses linux_usbfs)
-#   rtl-sdr/       - RTL-SDR hardware driver (tuner chips: R82XX, E4K, FC0012/13/2580)
-#   rtl433/        - rtl_433 decoding engine (100+ 433 MHz device decoders)
-#   rtlsdr433.cpp  - JNI bridge: exposes start/stop/status to Kotlin NativeBridge
-#   librtlsdr_andro.c - Android-specific USB open via file descriptor (rtlsdr_open2)
+#   ebc-sdr-native/  - git submodule, pinned to a tag. The shared SDR base of all three EBC
+#                      SDR apps: libusb 1.0.23 (Android port, unplug fixes), rtl-sdr
+#                      (osmocom v2.0.3 plus the RTL-SDR-Blog features worth keeping) and
+#                      rtlsdr_open2(dev**, fd), the fd -> rtlsdr_dev_t bridge. It builds
+#                      itself as the static library `ebc_sdr` and brings its own include
+#                      paths, compile options and linker flags. Provenance of every local
+#                      patch: ebc-sdr-native/PROVENANCE.md.
+#   rtl433/          - rtl_433 decoding engine (263 433 MHz device decoders, full v25.12)
+#   rtlsdr433.cpp    - JNI bridge: exposes start/stop/status to Kotlin NativeBridge
+#   android_bridge.c - rtl_433 data_output_t serialising events to JSON for the JNI callback
 #
 # Output pipeline: rtl_433 decoder -> announce_output_line() [rtlsdr433.cpp]
 #                  -> NativeBridge.nativeOutputLine() [JNI callback to Kotlin]
+#
+# Until v1.3.2 this directory carried its own copies of rtl-sdr/ and libusb-andro/ plus
+# librtlsdr_andro.c, and listed every one of their sources below. They are gone: three apps
+# each maintaining a copy is what the submodule exists to end. A clone needs
+# `git clone --recursive`, or `git submodule update --init` afterwards.
 # =============================================================================
 
 set(RTL433_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/rtl433/src)
-set(RTL_SDR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/rtl-sdr)
-set(LIBUSB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libusb-andro/libusb)
 
+# The shared base, first: everything below inherits this directory's compile definitions and
+# include paths, and the library must not -- it has to compile the same way in all three apps.
+# Its own log tag keeps rtl-sdr's and libusb's diagnostics apart from rtl_433's in logcat; the
+# bridge used to hardcode RTL433_USB.
+set(EBC_SDR_LOG_TAG "rtl433-sdr" CACHE STRING "" FORCE)
+add_subdirectory(ebc-sdr-native)
+
+# rtl-sdr/include and libusb-andro/libusb are NOT listed here: they arrive as PUBLIC include
+# directories of the ebc_sdr target. rtl433/src/sdr.c includes both <rtl-sdr.h> and <libusb.h>
+# directly, which is why the library exports them.
 include_directories(
-    ${RTL_SDR_DIR}/include
-    ${LIBUSB_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl433/include
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl433
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Enable RTLSDR support and threading for Android
-add_definitions(-DRTLSDR=1 -DLIBUSB1=1 -DTHREADS=1 -D__EBCANDROID__=1)
-
 add_library(rtlsdr433 SHARED
     rtlsdr433.cpp
-    librtlsdr_andro.c
     android_bridge.c
-
-    # libusb sources
-    ${LIBUSB_DIR}/core.c
-    ${LIBUSB_DIR}/descriptor.c
-    ${LIBUSB_DIR}/io.c
-    ${LIBUSB_DIR}/sync.c
-    ${LIBUSB_DIR}/strerror.c
-    ${LIBUSB_DIR}/hotplug.c
-    ${LIBUSB_DIR}/os/linux_usbfs.c
-    ${LIBUSB_DIR}/os/threads_posix.c
-    ${LIBUSB_DIR}/os/linux_netlink.c
-    ${LIBUSB_DIR}/os/poll_posix.c
-
-    # rtl-sdr sources
-    ${RTL_SDR_DIR}/src/tuner_r82xx.c
-    ${RTL_SDR_DIR}/src/tuner_e4k.c
-    ${RTL_SDR_DIR}/src/tuner_fc0012.c
-    ${RTL_SDR_DIR}/src/tuner_fc0013.c
-    ${RTL_SDR_DIR}/src/tuner_fc2580.c
 
     # rtl_433 core sources
     ${RTL433_SRC_DIR}/am_analyze.c
@@ -363,14 +356,33 @@ add_library(rtlsdr433 SHARED
     ${RTL433_SRC_DIR}/devices/yale_hsa.c
 )
 
+# rtl_433 build switches, scoped to the target rather than set with add_definitions():
+# a directory-scope definition would also reach ebc-sdr-native.
+#   RTLSDR, LIBUSB1, THREADS   rtl_433's own switches -- sdr.c compiles its RTL-SDR path and
+#                              its libusb error names, and the decoder loop uses pthreads.
+#                              Nothing in ebc-sdr-native tests them.
+#   __EBCANDROID__             the Android entry point in rtl_433.c and the fd-open path in
+#                              sdr.c are guarded by it. In ebc-sdr-native the same name is a
+#                              comment convention rather than a compile guard, so it makes no
+#                              difference there either way -- keeping it out is still correct.
+target_compile_definitions(rtlsdr433 PRIVATE
+    RTLSDR=1
+    LIBUSB1=1
+    THREADS=1
+    __EBCANDROID__=1
+)
+
 find_library(log-lib log)
 
-# Enable strict warnings for OUR bridge files only (not third-party rtl_433/libusb/rtl-sdr)
+# Enable strict warnings for OUR bridge files only (not third-party rtl_433).
+# ebc-sdr-native applies its own set, including -Werror=shorten-64-to-32, to its own files.
 set_source_files_properties(
     rtlsdr433.cpp
     android_bridge.c
-    librtlsdr_andro.c
     PROPERTIES COMPILE_FLAGS "-Wall -Wextra -Wno-unused-parameter"
 )
 
-target_link_libraries(rtlsdr433 ${log-lib})
+# ebc_sdr brings rtl-sdr, libusb, the bridge, their include paths, -fvisibility=hidden and the
+# 16 KB page-alignment linker flags. It also links the NDK log library itself, but ${log-lib}
+# stays listed here because this app's own files call __android_log_print directly.
+target_link_libraries(rtlsdr433 PRIVATE ebc_sdr ${log-lib})
